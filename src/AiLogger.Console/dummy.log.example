@@ -1,0 +1,4 @@
+2025-10-04 10:00:00 INFO: User 'jdoe@acme.com' with IP '192.168.1.100' accessed the resource '/api/data'.
+2025-10-04 10:01:15 WARN: Failed login attempt for user 'admin' from IP '10.0.0.5'.
+2025-10-04 10:02:30 ERROR: Unhandled exception in processing request from server 'PROD-WEB-01'. API Key used: 'ABC-123-DEF-456'.
+2025-10-04 10:03:45 DEBUG: Database 'customers_db' on server 'db.internal.acme.com' processed 50 records.
