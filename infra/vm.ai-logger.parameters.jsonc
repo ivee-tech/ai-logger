@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    // Required parameters
+    "adminUsername": {
+      "value": "azureuser"
+    },
+    "imageReference": {
+      "value": {
+        "publisher": "Canonical",
+        "offer": "ubuntu-24_04-lts",
+        "sku": "server",
+        "version": "latest"
+      }
+    },
+    "name": {
+      "value": "vm-ailogger-001"
+    },
+    "diskSizeGB": {
+      "value": 1024
+    },
+    "osType": {
+      "value": "Linux"
+    },
+    "vmSize": {
+      "value": "Standard_D8as_v5"
+    },
+    "zone": {
+      "value": 0
+    },
+    // Non-required parameters
+    "disablePasswordAuthentication": {
+      "value": false // true
+    },
+    "location": {
+      "value": "australiaeast"
+    },
+    "adminPassword": {
+      "value": "***"
+    },
+    "tags": {
+      "value": {}
+    },
+    "vnetName": {
+      "value": "vnet-ailogger-aue-001"
+    },
+    "subnetName": {
+      "value": "default"
+    }
+    //   "publicKeys": {
+    //     "value": [
+    //       {
+    //         "keyData": "<keyData>",
+    //         "path": "/home/localAdminUser/.ssh/authorized_keys"
+    //       }
+    //     ]
+    //   }
+  }
+}

@@ -1,0 +1,384 @@
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - src/*
+
+variables:
+  # Build Variables
+  buildConfiguration: 'Release'
+  dotNetFramework: 'net9.0'
+  dotNetVersion: '9.0.x'
+  
+  # Azure Variables
+  azureSubscription: 'YourAzureServiceConnection' # Replace with your Azure service connection name
+  vmResourceGroup: 'rg-ailogger-prod' # Replace with your resource group name
+  vmName: 'vm-ailogger-001' # Replace with your VM name
+  deploymentPath: '/usr/local/bin/ailogger' # Linux CLI path, change to 'C:\Program Files\AILogger' for Windows VM
+  storageAccountName: 'saailogger001' # Storage account for artifact transfer
+  containerName: 'deployments' # Container name for artifacts
+  
+  # Application Variables
+  appName: 'AiLogger.Console'
+  artifactName: 'ailogger-console'
+
+stages:
+- stage: Build
+  displayName: 'Build Stage'
+  jobs:
+  - job: Build
+    displayName: 'Build Job'
+    pool:
+      vmImage: 'ubuntu-latest'
+    
+    steps:
+    - task: UseDotNet@2
+      displayName: 'Use .NET $(dotNetVersion)'
+      inputs:
+        packageType: 'sdk'
+        version: '$(dotNetVersion)'
+        includePreviewVersions: true
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Restore packages'
+      inputs:
+        command: 'restore'
+        projects: 'src/**/*.csproj'
+        feedsToUse: 'select'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Build solution'
+      inputs:
+        command: 'build'
+        projects: 'src/AiLogger.sln'
+        arguments: '--configuration $(buildConfiguration) --no-restore'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Run tests'
+      inputs:
+        command: 'test'
+        projects: 'src/AiLogger.Tests/*.csproj'
+        arguments: '--configuration $(buildConfiguration) --no-build --collect:"XPlat Code Coverage"'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Publish application'
+      inputs:
+        command: 'publish'
+        projects: 'src/$(appName)/$(appName).csproj'
+        arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/publish --no-build --self-contained true --runtime linux-x64'
+        publishWebProjects: false
+        modifyOutputPath: false
+
+    - task: CopyFiles@2
+      displayName: 'Copy deployment scripts'
+      inputs:
+        SourceFolder: 'deployment'
+        Contents: '**'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)/scripts'
+        OverWrite: true
+      condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish artifacts'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: '$(artifactName)'
+        publishLocation: 'Container'
+      condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+
+- stage: Deploy
+  displayName: 'Deploy to Azure VM (via Bastion)'
+  dependsOn: Build
+  condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+  jobs:
+  - deployment: DeployToVM
+    displayName: 'Deploy to Private VM'
+    pool:
+      # vmImage: 'ubuntu-latest'
+      name: 'Default'
+    environment: 'Production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          # NOTE: Before running this pipeline, ensure VM managed identity is configured
+          # Run: scripts/setup-vm-managed-identity.sh or scripts/setup-vm-managed-identity.ps1
+          
+          - download: current
+            artifact: $(artifactName)
+            displayName: 'Download artifacts'
+
+          - task: AzureCLI@2
+            displayName: 'Upload artifacts to Azure Storage'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Uploading deployment artifacts to Azure Storage..."
+                
+                # Create storage container if it doesn't exist
+                az storage container create \
+                  --name $(containerName) \
+                  --account-name $(storageAccountName) \
+                  --auth-mode login \
+                  --fail-on-exist false
+                
+                # Upload artifacts with unique build ID
+                cd $(Pipeline.Workspace)/$(artifactName)/publish
+                
+                # Create deployment archive
+                tar -czf ailogger-$(Build.BuildId).tar.gz *
+                
+                # Upload to storage
+                az storage blob upload \
+                  --container-name $(containerName) \
+                  --name "ailogger-$(Build.BuildId).tar.gz" \
+                  --file "ailogger-$(Build.BuildId).tar.gz" \
+                  --account-name $(storageAccountName) \
+                  --auth-mode login \
+                  --overwrite true
+                
+                echo "Artifacts uploaded successfully with build ID: $(Build.BuildId)"
+
+          - task: AzureCLI@2
+            displayName: 'Deploy application via VM run-command'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Deploying application to private VM..."
+                
+                # Create deployment script that will run on the VM
+                cat > deployment-script.sh << 'EOF'
+                #!/bin/bash
+                set -e
+                
+                echo "Starting deployment on VM..."
+                BUILD_ID="$1"
+                STORAGE_ACCOUNT="$2"
+                CONTAINER_NAME="$3"
+                DEPLOY_PATH="$4"
+                
+                # Stop any running processes
+                echo "Stopping any running AI Logger processes..."
+                pkill -f 'AiLogger.Console' || echo 'No running AI Logger processes found'
+                sleep 2
+                pkill -9 -f 'AiLogger.Console' || echo 'No processes to force kill'
+                
+                # Create directories
+                echo "Creating application directories..."
+                sudo mkdir -p "$DEPLOY_PATH"
+                sudo mkdir -p /opt/ailogger
+                sudo mkdir -p /var/log/ailogger
+                sudo chmod 755 "$DEPLOY_PATH"
+                sudo chmod 755 /opt/ailogger
+                sudo chmod 777 /var/log/ailogger
+                
+                # Backup existing installation
+                if [ -d /opt/ailogger ] && [ -f /opt/ailogger/AiLogger.Console ]; then
+                  echo "Backing up existing installation..."
+                  sudo cp -r /opt/ailogger /opt/ailogger.backup.$(date +%Y%m%d_%H%M%S)
+                fi
+                
+                # Navigate to temp directory
+                cd /tmp
+                
+                # Authenticate with Azure using VM's managed identity
+                echo "Authenticating with Azure..."
+                az login --identity
+                
+                # Download deployment package
+                echo "Downloading deployment package..."
+                az storage blob download \
+                  --container-name "$CONTAINER_NAME" \
+                  --name "ailogger-$BUILD_ID.tar.gz" \
+                  --file "ailogger-$BUILD_ID.tar.gz" \
+                  --account-name "$STORAGE_ACCOUNT" \
+                  --auth-mode login
+                
+                # Extract and deploy
+                echo "Extracting deployment package..."
+                mkdir -p ailogger-deployment
+                tar -xzf "ailogger-$BUILD_ID.tar.gz" -C ailogger-deployment
+                
+                # Deploy files
+                echo "Deploying application files..."
+                sudo rm -rf /opt/ailogger/*
+                sudo cp -r ailogger-deployment/* /opt/ailogger/
+                
+                # Create CLI wrapper
+                echo "Creating CLI wrapper..."
+                sudo tee "$DEPLOY_PATH" > /dev/null << 'WRAPPER_EOF'
+                #!/bin/bash
+                # AI Logger CLI Wrapper Script
+                
+                # Set working directory to application directory
+                cd /opt/ailogger
+                
+                # Set environment variables
+                export ASPNETCORE_ENVIRONMENT=Production
+                export DOTNET_ENVIRONMENT=Production
+                
+                # Execute the application with all passed arguments
+                exec ./AiLogger.Console "$@"
+                WRAPPER_EOF
+                
+                # Set permissions
+                sudo chmod +x "$DEPLOY_PATH"
+                sudo chmod +x /opt/ailogger/AiLogger.Console
+                sudo chmod -R 755 /opt/ailogger
+                
+                # Create PATH configuration
+                echo "Configuring system PATH..."
+                sudo tee /etc/profile.d/ailogger.sh > /dev/null << 'PATH_EOF'
+                # AI Logger CLI tool
+                export PATH=$PATH:/usr/local/bin
+                PATH_EOF
+                
+                sudo chmod +x /etc/profile.d/ailogger.sh
+                
+                # Create symlink for easier access
+                if [ ! -L /usr/local/bin/ailogger ]; then
+                  sudo ln -sf "$DEPLOY_PATH" /usr/local/bin/ailogger
+                fi
+                
+                # Cleanup
+                rm -rf /tmp/ailogger-deployment /tmp/ailogger-$BUILD_ID.tar.gz
+                
+                echo "Deployment completed successfully!"
+                echo "CLI available at: $DEPLOY_PATH"
+                echo "Application files: /opt/ailogger/"
+                EOF
+                
+                # Execute deployment script on VM with parameters
+                az vm run-command invoke \
+                  --resource-group $(vmResourceGroup) \
+                  --name $(vmName) \
+                  --command-id RunShellScript \
+                  --scripts @deployment-script.sh \
+                  --parameters "$(Build.BuildId)" "$(storageAccountName)" "$(containerName)" "$(deploymentPath)" \
+                  --no-wait false
+
+          - task: AzureCLI@2
+            displayName: 'Verify CLI installation'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Verifying CLI installation..."
+                az vm run-command invoke \
+                  --resource-group $(vmResourceGroup) \
+                  --name $(vmName) \
+                  --command-id RunShellScript \
+                  --scripts "
+                    echo 'AI Logger CLI Installation Verification'
+                    echo '======================================'
+                    
+                    echo 'Checking CLI wrapper...'
+                    if [ -f $(deploymentPath) ]; then
+                      echo '✓ CLI wrapper exists: $(deploymentPath)'
+                      ls -la $(deploymentPath)
+                    else
+                      echo '✗ CLI wrapper not found'
+                      exit 1
+                    fi
+                    
+                    echo 'Checking application files...'
+                    if [ -f /opt/ailogger/AiLogger.Console ]; then
+                      echo '✓ Application files exist'
+                      ls -la /opt/ailogger/
+                    else
+                      echo '✗ Application files not found'
+                      exit 1
+                    fi
+                    
+                    echo 'Testing CLI functionality...'
+                    cd /opt/ailogger
+                    timeout 10s ./AiLogger.Console --help > /dev/null 2>&1 && echo '✓ CLI help command works' || echo '⚠ CLI help command failed or timed out'
+                    
+                    echo 'Checking PATH configuration...'
+                    if [ -f /etc/profile.d/ailogger.sh ]; then
+                      echo '✓ PATH configuration exists'
+                      cat /etc/profile.d/ailogger.sh
+                    else
+                      echo '⚠ PATH configuration not found'
+                    fi
+                    
+                    echo 'Checking symlink...'
+                    if [ -L /usr/local/bin/ailogger ]; then
+                      echo '✓ Symlink exists'
+                      ls -la /usr/local/bin/ailogger
+                    else
+                      echo '⚠ Symlink not found'
+                    fi
+                    
+                    echo ''
+                    echo 'Installation Summary:'
+                    echo '- CLI Wrapper: $(deploymentPath)'
+                    echo '- Application: /opt/ailogger/AiLogger.Console'
+                    echo '- Configuration: /opt/ailogger/appsettings.json'
+                    echo '- Logs: /var/log/ailogger/'
+                    echo ''
+                    echo 'Usage:'
+                    echo '  source /etc/profile.d/ailogger.sh  # Reload PATH'
+                    echo '  ailogger --help                   # Use CLI'
+                  " \
+                  --no-wait false
+
+          - task: AzureCLI@2
+            displayName: 'Cleanup deployment artifacts'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Cleaning up deployment artifacts..."
+                
+                # Keep last 5 deployments, remove older ones
+                az storage blob list \
+                  --container-name $(containerName) \
+                  --account-name $(storageAccountName) \
+                  --auth-mode login \
+                  --query "sort_by([?starts_with(name, 'ailogger-')], &properties.lastModified)[:-5].name" \
+                  --output tsv | while read blob; do
+                    if [ ! -z "$blob" ]; then
+                      echo "Deleting old artifact: $blob"
+                      az storage blob delete \
+                        --container-name $(containerName) \
+                        --name "$blob" \
+                        --account-name $(storageAccountName) \
+                        --auth-mode login
+                    fi
+                  done
+                
+                # Cleanup old backups on VM
+                az vm run-command invoke \
+                  --resource-group $(vmResourceGroup) \
+                  --name $(vmName) \
+                  --command-id RunShellScript \
+                  --scripts "
+                    echo 'Cleaning up old backups on VM...'
+                    cd /opt
+                    ls -t /opt/ailogger.backup.* 2>/dev/null | tail -n +4 | xargs -r sudo rm -rf
+                    echo 'Cleanup completed'
+                    
+                    echo 'AI Logger CLI Installation Complete!'
+                    echo '===================================='
+                    echo 'Usage:'
+                    echo '  source /etc/profile.d/ailogger.sh  # Reload PATH'
+                    echo '  ailogger --help                   # Use CLI tool'
+                    echo '  /opt/ailogger/AiLogger.Console --help  # Direct usage'
+                    echo ''
+                    echo 'Configuration: /opt/ailogger/appsettings.json'
+                    echo 'Logs: /var/log/ailogger/'
+                  " \
+                  --no-wait false
+                
+                echo "Deployment completed successfully"
+            continueOnError: true
