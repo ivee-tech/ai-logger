@@ -14,7 +14,7 @@ variables:
   dotNetVersion: '9.0.x'
   
   # Azure Variables
-  azureSubscription: 'YourAzureServiceConnection' # Replace with your Azure service connection name
+  azureSubscription: 'mngenvmcap572176' # Replace with your Azure service connection name
   vmResourceGroup: 'rg-ailogger-prod' # Replace with your resource group name
   vmName: 'vm-ailogger-001' # Replace with your VM name
   deploymentPath: '/usr/local/bin/ailogger' # Linux CLI path, change to 'C:\Program Files\AILogger' for Windows VM
