@@ -70,7 +70,7 @@ namespace AiLogger.Console
             _logger.LogInformation($"Using AI provider: {_aiProvider.ProviderName}");
             _logger.LogInformation("Processing logs...");
 
-            var logFilePath = Path.Combine(AppContext.BaseDirectory, "dummy.log");
+            var logFilePath = Path.Combine(AppContext.BaseDirectory, "dummy.log.example");
             if (!File.Exists(logFilePath))
             {
                 _logger.LogWarning("Log file not found at {Path}, creating sample.", logFilePath);
