@@ -32,7 +32,8 @@ stages:
   - job: Build
     displayName: 'Build Job'
     pool:
-      vmImage: 'ubuntu-latest'
+      # vmImage: 'ubuntu-latest'
+      name: Default
     
     steps:
     - task: UseDotNet@2

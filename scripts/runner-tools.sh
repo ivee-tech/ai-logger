@@ -9,9 +9,12 @@ ollama version
 
 # Install .NET 9.0 runtime if not present
 sudo add-apt-repository ppa:dotnet/backports
+# install SDK
+sudo apt-get update && \
+  sudo apt-get install -y dotnet-sdk-9.0
+# install runtime
 sudo apt-get update && \
   sudo apt-get install -y aspnetcore-runtime-9.0
-
 # verify
 dotnet --list-runtimes | grep 'Microsoft.AspNetCore.App 9.0'
 
