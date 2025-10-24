@@ -262,7 +262,7 @@ stages:
                   --command-id RunShellScript \
                   --scripts @deployment-script.sh \
                   --parameters "$(Build.BuildId)" "$(storageAccountName)" "$(containerName)" "$(deploymentPath)" \
-                  --no-wait false
+                  --no-wait
 
           - task: AzureCLI@2
             displayName: 'Verify CLI installation'
@@ -329,7 +329,7 @@ stages:
                     echo '  source /etc/profile.d/ailogger.sh  # Reload PATH'
                     echo '  ailogger --help                   # Use CLI'
                   " \
-                  --no-wait false
+                  --no-wait
 
           - task: AzureCLI@2
             displayName: 'Cleanup deployment artifacts'
@@ -378,7 +378,7 @@ stages:
                     echo 'Configuration: /opt/ailogger/appsettings.json'
                     echo 'Logs: /var/log/ailogger/'
                   " \
-                  --no-wait false
+                  --no-wait
                 
                 echo "Deployment completed successfully"
             continueOnError: true
