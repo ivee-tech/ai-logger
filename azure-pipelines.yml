@@ -55,7 +55,7 @@ stages:
       inputs:
         command: 'build'
         projects: 'src/AiLogger.sln'
-        arguments: '--configuration $(buildConfiguration) --no-restore --self-contained true'
+        arguments: '--configuration $(buildConfiguration) --no-restore'
 
     - task: DotNetCoreCLI@2
       displayName: 'Run tests'
