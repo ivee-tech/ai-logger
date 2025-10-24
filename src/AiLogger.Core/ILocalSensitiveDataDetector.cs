@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace AiLogger.Core;
@@ -33,6 +35,8 @@ public sealed class RegexLocalSensitiveDataDetector : ILocalSensitiveDataDetecto
     private static readonly Regex HostnameRegex = new("[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9-]{1,63})+", RegexOptions.Compiled);
     // Heuristic API key / token: long mixed-case base64ish strings length>=24
     private static readonly Regex ApiKeyRegex = new("[A-Za-z0-9-_]{24,64}", RegexOptions.Compiled);
+    private static readonly Regex SshPublicKeyRegex = new("(?:ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp(?:256|384|521)) [A-Za-z0-9+/=]{20,}(?: \\S+)?", RegexOptions.Compiled);
+    private static readonly Regex SshFingerprintRegex = new("SHA256:[A-Za-z0-9+/]{43}", RegexOptions.Compiled);
 
     public LocalDetectionResult DetectAndReplace(string text, SensitiveDataOptions options)
     {
@@ -45,9 +49,12 @@ public sealed class RegexLocalSensitiveDataDetector : ILocalSensitiveDataDetecto
         var sb = new System.Text.StringBuilder(text);
 
         // We'll collect matches, then replace from end to start to keep indices valid.
-        var replacements = new List<(int Start, int Length, string Type, string Original, string Replacement)>();
+    var replacements = new List<(int Start, int Length, string Type, string Original, string Replacement)>();
+    var replacementMap = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        int emailCounter = 1, ipCounter = 1, hostCounter = 1, apiCounter = 1, guidCounter = 1;
+    int emailCounter = 1, ipCounter = 1, hostCounter = 1, apiCounter = 1, guidCounter = 1, sshKeyCounter = 1, sshFingerprintCounter = 1;
+
+        static string ComposeKey(string type, string original) => string.Concat(type, "|", original);
 
         void Collect(Regex rx, string type, Func<int> nextIndex, Func<int, string> replacementFactory)
         {
@@ -57,8 +64,14 @@ public sealed class RegexLocalSensitiveDataDetector : ILocalSensitiveDataDetecto
                 var original = m.Value;
                 // Light validation for IP to reduce false positives
                 if (type == "IpAddress" && !IsValidIPv4(original)) continue;
-                var idx = nextIndex();
-                var replacement = replacementFactory(idx);
+                if (type == "Hostname" && !IsLikelyHostname(original)) continue;
+                var key = ComposeKey(type, original);
+                if (!replacementMap.TryGetValue(key, out var replacement))
+                {
+                    var idx = nextIndex();
+                    replacement = replacementFactory(idx);
+                    replacementMap[key] = replacement;
+                }
                 replacements.Add((m.Index, m.Length, type, original, replacement));
             }
         }
@@ -83,6 +96,11 @@ public sealed class RegexLocalSensitiveDataDetector : ILocalSensitiveDataDetecto
         {
             Collect(GuidRegex, "Guid", () => guidCounter++, i => $"00000000-0000-0000-0000-{i.ToString().PadLeft(12,'0')}");
         }
+        if (options.DetectSshKeys)
+        {
+            Collect(SshPublicKeyRegex, "SshKey", () => sshKeyCounter++, CreateMockSshPublicKey);
+            Collect(SshFingerprintRegex, "SshFingerprint", () => sshFingerprintCounter++, CreateMockSshFingerprint);
+        }
 
         // De-duplicate overlapping (pick earliest longest). Sort by start, then length desc.
         replacements.Sort((a,b) => a.Start == b.Start ? b.Length.CompareTo(a.Length) : a.Start.CompareTo(b.Start));
@@ -96,13 +114,20 @@ public sealed class RegexLocalSensitiveDataDetector : ILocalSensitiveDataDetecto
         }
 
         // Apply from end
+        var seenMappingKeys = new HashSet<string>(StringComparer.Ordinal);
         for (int i = final.Count - 1; i >= 0; i--)
         {
             var r = final[i];
             sb.Remove(r.Start, r.Length);
             sb.Insert(r.Start, r.Replacement);
-            mappings.Add(new MappingEntry($"Local.{r.Type}", r.Original, r.Replacement));
+            var key = ComposeKey(r.Type, r.Original);
+            if (seenMappingKeys.Add(key))
+            {
+                mappings.Add(new MappingEntry($"Local.{r.Type}", r.Original, r.Replacement));
+            }
         }
+
+        mappings.Reverse(); // restore original detection order
 
         return new LocalDetectionResult
         {
@@ -121,5 +146,58 @@ public sealed class RegexLocalSensitiveDataDetector : ILocalSensitiveDataDetecto
             if (!int.TryParse(p, out int val) || val < 0 || val > 255) return false;
         }
         return true;
+    }
+
+    private static bool IsLikelyHostname(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (value.Contains(' ') || value.Contains(':')) return false;
+        if (!value.Contains('.')) return false;
+        if (!value.Any(char.IsLetter)) return false;
+
+        var labels = value.Split('.');
+        if (labels.Length < 2) return false;
+
+        foreach (var label in labels)
+        {
+            if (string.IsNullOrEmpty(label) || label.Length > 63) return false;
+            if (!char.IsLetterOrDigit(label[0]) || !char.IsLetterOrDigit(label[^1])) return false;
+            if (label.Any(ch => !(char.IsLetterOrDigit(ch) || ch == '-'))) return false;
+            if (label.All(char.IsDigit)) return false; // avoid pure numeric segments
+        }
+
+        return true;
+    }
+
+    private static string CreateMockSshPublicKey(int index)
+    {
+        var bytes = new byte[32];
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            bytes[i] = (byte)((index * 37 + i * 17) % 255);
+            if (bytes[i] == 0) bytes[i] = 1;
+        }
+        var base64 = Convert.ToBase64String(bytes);
+        return $"ssh-ed25519 {base64} user{index}@example.local";
+    }
+
+    private static string CreateMockSshFingerprint(int index)
+    {
+        var bytes = new byte[32];
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            bytes[i] = (byte)(((index + 5) * 29 + i * 13) % 253);
+            if (bytes[i] == 0) bytes[i] = 2;
+        }
+        var base64 = Convert.ToBase64String(bytes).TrimEnd('=');
+        if (base64.Length < 43)
+        {
+            base64 = base64.PadRight(43, 'A');
+        }
+        else if (base64.Length > 43)
+        {
+            base64 = base64.Substring(0, 43);
+        }
+        return $"SHA256:{base64}";
     }
 }

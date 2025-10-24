@@ -7,6 +7,7 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace AiLogger.Console
@@ -70,7 +71,7 @@ namespace AiLogger.Console
             _logger.LogInformation($"Using AI provider: {_aiProvider.ProviderName}");
             _logger.LogInformation("Processing logs...");
 
-            var logFilePath = Path.Combine(AppContext.BaseDirectory, "dummy.log.example");
+            var logFilePath = Path.Combine(AppContext.BaseDirectory, "system_logs");
             if (!File.Exists(logFilePath))
             {
                 _logger.LogWarning("Log file not found at {Path}, creating sample.", logFilePath);
@@ -112,21 +113,37 @@ namespace AiLogger.Console
             }
             else
             {
+                var sanitizedText = aiResult.SanitizedText;
+                var filteredMappings = new List<MappingEntry>();
+                foreach (var mapping in aiResult.Mappings)
+                {
+                    if (IsFalsePositiveHostname(mapping))
+                    {
+                        if (!string.IsNullOrEmpty(mapping.Replacement) && sanitizedText.Contains(mapping.Replacement, StringComparison.Ordinal))
+                        {
+                            sanitizedText = sanitizedText.Replace(mapping.Replacement, mapping.Original, StringComparison.Ordinal);
+                        }
+                        continue;
+                    }
+                    filteredMappings.Add(mapping);
+                }
+
                 // Merge mappings (local first, then AI avoiding duplicate originals)
                 var merged = new List<MappingEntry>(localResult.Mappings);
                 var seen = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var m in localResult.Mappings) seen.Add(m.Original);
-                foreach (var m in aiResult.Mappings)
+                foreach (var m in filteredMappings)
                 {
                     if (!seen.Contains(m.Original))
                     {
                         merged.Add(m);
+                        seen.Add(m.Original);
                     }
                 }
                 finalResult = new SanitizationResult
                 {
                     OriginalText = originalContent,
-                    SanitizedText = aiResult.SanitizedText,
+                    SanitizedText = sanitizedText,
                     Mappings = merged,
                     Success = true
                 };
@@ -159,6 +176,36 @@ namespace AiLogger.Console
             {
                 _logger.LogInformation("Replaced {Count} sensitive items.", result.Mappings.Count);
             }
+        }
+
+        private static bool IsFalsePositiveHostname(MappingEntry mapping)
+        {
+            if (!string.Equals(mapping.Type, "Hostname", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var value = mapping.Original?.Trim();
+            if (string.IsNullOrEmpty(value))
+            {
+                return false;
+            }
+
+            if (value.Contains(' '))
+            {
+                return true;
+            }
+
+            if (value.Contains(':'))
+            {
+                var segments = value.Split(':');
+                if (segments.Length >= 2 && segments.All(s => s.All(char.IsDigit)))
+                {
+                    return true; // looks like HH:mm[:ss] timestamp
+                }
+            }
+
+            return false;
         }
     }
 }

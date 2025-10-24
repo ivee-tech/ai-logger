@@ -36,12 +36,8 @@ public sealed class OllamaProvider : AIProviderBase
             return JsonSerializer.Serialize(new { provider = ProviderName, configured = false, items = Array.Empty<object>() });
         }
 
-        // System prompt instructing the model to ONLY output JSON
-        var systemPrompt = """
-You are a log privacy assistant. Extract potentially sensitive items from the user content. Output ONLY JSON:
-{"items":[{"type":string,"value":string,"start":number,"length":number}],"model":string}
-Types: Email, IpAddress, Hostname, ApiKey, Guid. If none, items=[].
-""";
+    // System prompt instructing the model to ONLY output JSON
+    var systemPrompt = ProviderSystemPrompts.Analysis;
 
         try
         {
@@ -95,11 +91,7 @@ Types: Email, IpAddress, Hostname, ApiKey, Guid. If none, items=[].
             return new SanitizationResult { OriginalText = text, SanitizedText = text, Success = false, Error = "Provider not configured" };
         }
 
-        var systemPrompt = """
-You sanitize log text. Output ONLY JSON:
-{"sanitizedText":string,"mappings":[{"type":string,"original":string,"replacement":string}]}
-Guidelines: Replace sensitive values (emails, ip addresses, hostnames, api keys, guids) with realistic mock equivalents. Preserve timestamps and log levels.
-""";
+    var systemPrompt = ProviderSystemPrompts.Sanitization;
 
         try
         {

@@ -8,4 +8,5 @@ public sealed class SanitizationOptions
     public bool MaskIpAddresses { get; init; } = true;
     public bool MaskHostnames { get; init; } = true;
     public bool MaskApiKeys { get; init; } = true;
+    public bool MaskSshKeys { get; init; } = true;
 }

@@ -10,6 +10,7 @@ public sealed class SensitiveDataOptions
     public bool DetectHostnames { get; init; } = true;
     public bool DetectApiKeys { get; init; } = true;
     public bool DetectGuids { get; init; } = true;
+    public bool DetectSshKeys { get; init; } = true;
 }
 
 public sealed class SanitizationResult

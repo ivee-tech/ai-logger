@@ -42,14 +42,7 @@ namespace AiLogger.Providers
                 return JsonSerializer.Serialize(new { provider = ProviderName, error = "Missing AZURE_OPENAI_KEY" });
             }
 
-                        var systemPrompt = """
-You extract potentially sensitive data from raw log text. Return ONLY JSON:
-{
-    "items": [ { "type": string, "value": string, "start": number, "length": number } ],
-    "model": string
-}
-Types to detect: Email, IpAddress, Hostname, ApiKey, Guid. If none, items = [].
-""";
+            var systemPrompt = ProviderSystemPrompts.Analysis;
 
             try
             {
@@ -113,14 +106,7 @@ Types to detect: Email, IpAddress, Hostname, ApiKey, Guid. If none, items = [].
                 return new SanitizationResult { OriginalText = text, SanitizedText = text, Success = false, Error = "Missing configuration (endpoint/api key)." };
             }
 
-                        var systemPrompt = """
-You sanitize log text. Output ONLY JSON:
-{
-    "sanitizedText": string,
-    "mappings": [ { "type": string, "original": string, "replacement": string } ]
-}
-Guidelines: Replace sensitive values (emails, ip addresses, hostnames, api keys, guids) with realistic mock equivalents. Preserve timestamps and log levels.
-""";
+            var systemPrompt = ProviderSystemPrompts.Sanitization;
 
             try
             {
