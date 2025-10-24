@@ -82,12 +82,11 @@ stages:
         OverWrite: true
       condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
 
-    - task: PublishBuildArtifacts@1
+    - task: PublishPipelineArtifact@1
       displayName: 'Publish artifacts'
       inputs:
-        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-        ArtifactName: '$(artifactName)'
-        publishLocation: 'Container'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifact: '$(artifactName)'
       condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
 
 - stage: Deploy
