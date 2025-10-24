@@ -256,7 +256,7 @@ To deploy to Windows VM, modify these sections:
 
 1. **Change runtime** in publish task:
    ```yaml
-   arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/publish --no-build --self-contained true --runtime win-x64'
+   arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/publish --no-build'
    ```
 
 2. **Update deployment path**:
