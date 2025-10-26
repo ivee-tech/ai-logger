@@ -1,0 +1,148 @@
+<div class="app-shell" [class.submitting]="isSubmitting">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">AI-assisted log sanitization</p>
+      <h1>{{ title }}</h1>
+      <p class="subtitle">Upload raw diagnostic logs, mask sensitive markers, and review results before sharing.</p>
+    </div>
+    <button type="button" class="secondary" (click)="resetForm()" [disabled]="isSubmitting && !analysisResult">Reset</button>
+  </header>
+
+  <main class="page-content">
+    <section class="panel">
+      <form class="upload-form" [formGroup]="uploadForm" (submit)="submitAnalysis()" novalidate>
+        <div
+          class="drop-zone"
+          [class.drag-over]="isDragOver"
+          [class.disabled]="isSubmitting"
+          (dragover)="handleDragOver($event)"
+          (dragleave)="handleDragLeave($event)"
+          (drop)="handleDrop($event)"
+        >
+          <input
+            #fileInput
+            type="file"
+            id="logFile"
+            accept=".log,.txt,.json,.xml,.csv,.zip,.gz,.tar,.tar.gz"
+            (change)="onFileInputChange($event)"
+            [disabled]="isSubmitting"
+            hidden
+          />
+
+          <div class="drop-zone-content">
+            <p class="summary">{{ selectedFileSummary }}</p>
+            <div class="actions">
+              <button type="button" class="primary" (click)="triggerFileDialog()" [disabled]="isSubmitting">Choose file</button>
+              <span class="hint">or drop it above</span>
+              <button *ngIf="selectedFile" type="button" class="secondary" (click)="removeFile()" [disabled]="isSubmitting">Remove</button>
+            </div>
+            <small>Maximum file size: 5&nbsp;MB</small>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <label class="field">
+            <span>Preferred AI provider</span>
+            <select formControlName="provider" [disabled]="isSubmitting">
+              <option *ngFor="let option of providerOptions" [value]="option.value">{{ option.label }}</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Notes for the reviewer (optional)</span>
+            <textarea
+              formControlName="notes"
+              rows="3"
+              placeholder="Add context that helps triage the findings"
+              [disabled]="isSubmitting"
+            ></textarea>
+          </label>
+        </div>
+
+        <div class="form-footer">
+          <div class="status" *ngIf="errorMessage as error">{{ error }}</div>
+          <button type="submit" class="primary" [disabled]="!canSubmit">
+            <span *ngIf="isSubmitting" class="spinner" aria-hidden="true"></span>
+            <span>{{ isSubmitting ? 'Analyzing…' : 'Analyze log' }}</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section *ngIf="analysisResult" class="panel results">
+      <header class="results-header">
+        <h2>Analysis summary</h2>
+        <div class="result-actions">
+          <button type="button" class="secondary" (click)="downloadSanitizedCopy()">Download sanitized copy</button>
+        </div>
+      </header>
+
+      <div class="metadata">
+        <dl>
+          <div>
+            <dt>Original file</dt>
+            <dd>{{ analysisResult.metadata.originalFileName }}</dd>
+          </div>
+          <div>
+            <dt>Provider</dt>
+            <dd>{{ analysisResult.metadata.provider }}</dd>
+          </div>
+          <div>
+            <dt>Processed at</dt>
+            <dd>{{ analysisResult.metadata.processedAt | date: 'medium' }}</dd>
+          </div>
+          <div>
+            <dt>Duration</dt>
+            <dd>{{ analysisResult.metadata.durationMs | number: '1.0-0' }} ms</dd>
+          </div>
+          <div *ngIf="analysisResult.metadata.tokenUsage as usage; else noTokenUsage">
+            <dt>Token usage</dt>
+            <dd>
+              {{ usage.promptTokens }} prompt /
+              {{ usage.completionTokens }} completion
+              ({{ tokenTotal(usage) ?? 0 }} total)
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <ng-template #noTokenUsage>
+        <div>
+          <dt>Token usage</dt>
+          <dd>Not reported</dd>
+        </div>
+      </ng-template>
+
+      <ul *ngIf="analysisResult.warnings?.length" class="warnings">
+        <li *ngFor="let warning of analysisResult.warnings">{{ warning }}</li>
+      </ul>
+
+      <div class="sanitized">
+        <h3>Sanitized content</h3>
+        <textarea rows="12" readonly [value]="analysisResult.sanitizedContent"></textarea>
+      </div>
+
+      <div class="findings" *ngIf="hasSensitiveFindings">
+        <h3>Detected tokens</h3>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Category</th>
+              <th scope="col">Replacement</th>
+              <th scope="col">Sample</th>
+              <th scope="col">Occurrences</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let finding of analysisResult.sensitiveFindings">
+              <td>{{ finding.category }}</td>
+              <td>{{ finding.replacementKey }}</td>
+              <td>{{ finding.sample ?? 'n/a' }}</td>
+              <td>{{ finding.occurrences ?? 0 }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>

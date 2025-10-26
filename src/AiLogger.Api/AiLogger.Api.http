@@ -1,0 +1,16 @@
+@host = http://localhost:5000
+
+### Submit a sample log for analysis
+POST {{host}}/api/logs/analyze
+Accept: application/json
+Content-Type: multipart/form-data; boundary=sample
+
+--sample
+Content-Disposition: form-data; name="file"; filename="sample.log"
+Content-Type: text/plain
+
+2024-09-13T09:14:11Z WARN AuthService Failed login for user admin@example.com from 198.51.100.34
+2024-09-13T09:14:12Z INFO Proxy Forwarding request to db.internal.corp with api key sk-test-abc123xyz
+--sample--
+
+###
