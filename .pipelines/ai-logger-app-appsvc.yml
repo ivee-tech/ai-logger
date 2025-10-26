@@ -51,7 +51,7 @@ stages:
       displayName: Stage build artifacts
       inputs:
         SourceFolder: 'AiLogger.Web/dist/ai-logger.web'
-        Contents: '**'
+        Contents: 'browser/**'
         TargetFolder: '$(Build.ArtifactStagingDirectory)/web'
 
     - task: ArchiveFiles@2

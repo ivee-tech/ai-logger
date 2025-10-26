@@ -15,6 +15,12 @@
       },
       "serverFarmName": {
         "value": "asp-ailogger-001"
+      },
+      "useLinux": {
+        "value": false
+      },
+      "alwaysOn": {
+        "value": false
       }
     }
   }
