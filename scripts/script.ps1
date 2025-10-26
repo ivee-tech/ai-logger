@@ -17,7 +17,7 @@ az deployment group create `
   --parameters ../infra/vm.ai-logger.parameters.jsonc `
   --parameters adminPassword=$adminPassword
 
-# depploy SA
+# deploy SA
 $rgName = 'rg-ailogger-001'
 az deployment group create `
   --resource-group $rgName `
@@ -32,3 +32,25 @@ $roleName = 'Storage Blob Data Reader'
 $saId = az storage account show --name $saName --resource-group $rgName --query id --output tsv
 $id = az vm identity show --resource-group $rgName --name $vmName --query principalId --output tsv
 az role assignment create --assignee $id --scope $saId --role "$roleName"
+
+# deploy server farm / app plan
+$rgName = 'rg-ailogger-001'
+az deployment group create `
+  --resource-group $rgName `
+  --template-file ../infra/server-farm.bicep `
+  --parameters ../infra/server-farm.ai-logger.parameters.jsonc
+
+# deploy API
+$rgName = 'rg-ailogger-001'
+az deployment group create `
+  --resource-group $rgName `
+  --template-file ../infra/app-svc.bicep `
+  --parameters ../infra/app-svc.ai-logger.api.parameters.jsonc
+
+
+# deploy Web App
+$rgName = 'rg-ailogger-001'
+az deployment group create `
+  --resource-group $rgName `
+  --template-file ../infra/app-svc.bicep `
+  --parameters ../infra/app-svc.ai-logger.app.parameters.jsonc
