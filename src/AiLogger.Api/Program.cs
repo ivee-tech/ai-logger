@@ -13,6 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.AddHealthChecks();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(CorsPolicyName, policy =>
@@ -37,6 +38,17 @@ if (app.Environment.IsDevelopment())
     app.UseCors(CorsPolicyName);
     app.MapOpenApi();
 }
+
+app.MapGet("/api/health", (TimeProvider timeProvider) =>
+{
+    var now = timeProvider.GetUtcNow();
+    return Results.Ok(new
+    {
+        status = "Healthy",
+        timestampUtc = now.UtcDateTime,
+        uptimeSeconds = Environment.TickCount64 / 1000d
+    });
+}).WithName("Health");
 
 app.MapPost("/api/logs/analyze", async Task<IResult> (
     [FromForm(Name = "file")] IFormFile? file,
