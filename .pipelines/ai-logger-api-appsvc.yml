@@ -107,7 +107,7 @@ stages:
   jobs:
   - deployment: DeployApi
     displayName: Deploy API
-    environment: 'production/ailogger-api'
+    environment: 'Production'
     strategy:
       runOnce:
         deploy:
