@@ -8,7 +8,7 @@ trigger:
       - AiLogger.Web/**
       - infra/**
       - deployment/**
-      - .pipelines/ai-logger-web-appsvc.yml
+      - .pipelines/ai-logger-app-appsvc.yml
 
 pr:
   branches:
