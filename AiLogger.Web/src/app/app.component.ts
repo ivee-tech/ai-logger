@@ -31,8 +31,8 @@ export class AppComponent {
   readonly providerOptions = [
     { value: 'auto', label: 'Auto select (recommended)' },
     { value: 'AzureOpenAI', label: 'Azure OpenAI' },
-    { value: 'OpenAI', label: 'OpenAI' },
-    { value: 'GitHub', label: 'GitHub Models' },
+    // { value: 'OpenAI', label: 'OpenAI' },
+    // { value: 'GitHub', label: 'GitHub Models' },
     { value: 'Ollama', label: 'Ollama (local)' }
   ];
 
