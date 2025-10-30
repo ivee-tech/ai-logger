@@ -65,6 +65,7 @@ public sealed class RegexLocalSensitiveDataDetector : ILocalSensitiveDataDetecto
                 // Light validation for IP to reduce false positives
                 if (type == "IpAddress" && !IsValidIPv4(original)) continue;
                 if (type == "Hostname" && !IsLikelyHostname(original)) continue;
+                if (ShouldSkip(type, original)) continue;
                 var key = ComposeKey(type, original);
                 if (!replacementMap.TryGetValue(key, out var replacement))
                 {
@@ -167,6 +168,93 @@ public sealed class RegexLocalSensitiveDataDetector : ILocalSensitiveDataDetecto
         }
 
         return true;
+    }
+
+    private static bool ShouldSkip(string type, string original)
+    {
+        return type switch
+        {
+            "Hostname" => ShouldSkipHostname(original),
+            "ApiKey" => ShouldSkipApiKey(original),
+            _ => false
+        };
+    }
+
+    private static readonly HashSet<string> HostnameFileLikeSuffixes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "log", "txt", "json", "xml", "yaml", "yml", "ini", "conf", "cfg", "cnf",
+        "py", "sh", "ps1", "bat", "cmd", "service", "target", "socket", "timer",
+        "slice", "wants", "mount", "path", "rules", "unit"
+    };
+
+    private static bool ShouldSkipHostname(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        if (value.Contains('/') || value.Contains('\\'))
+        {
+            return true; // looks like a path
+        }
+
+        var labels = value.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (labels.Length == 0)
+        {
+            return false;
+        }
+
+        var lastLabel = labels[^1];
+        if (HostnameFileLikeSuffixes.Contains(lastLabel))
+        {
+            return true;
+        }
+
+        if (labels.Length >= 2 && labels.All(IsPascalOrCamelCaseLabel))
+        {
+            return true; // looks like a namespaced identifier (e.g. Microsoft.GuestConfiguration...)
+        }
+
+        return false;
+    }
+
+    private static bool IsPascalOrCamelCaseLabel(string label)
+    {
+        if (string.IsNullOrEmpty(label))
+        {
+            return false;
+        }
+
+        if (!label.All(char.IsLetter))
+        {
+            return false;
+        }
+
+        if (!char.IsUpper(label[0]))
+        {
+            return false;
+        }
+
+        return label.Any(char.IsLower);
+    }
+
+    private static bool ShouldSkipApiKey(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return true;
+        }
+
+        bool hasDigit = value.Any(char.IsDigit);
+        bool hasUpper = value.Any(char.IsUpper);
+
+        if (!hasDigit && !hasUpper)
+        {
+            return true; // looks like plain words (e.g. guest-configuration-shim)
+        }
+
+        return false;
     }
 
     private static string CreateMockSshPublicKey(int index)
