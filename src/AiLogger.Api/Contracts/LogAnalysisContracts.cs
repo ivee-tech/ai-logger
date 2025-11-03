@@ -23,7 +23,8 @@ public sealed record AnalysisMetadataDto(
     string Provider,
     DateTimeOffset ProcessedAt,
     double DurationMs,
-    TokenUsageDto TokenUsage
+    TokenUsageDto TokenUsage,
+    string? SanitizedFileName
 );
 
 public sealed record TokenUsageDto(

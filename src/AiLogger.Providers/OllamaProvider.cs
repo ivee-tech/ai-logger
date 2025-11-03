@@ -1,4 +1,5 @@
 using AiLogger.Core;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -14,20 +15,29 @@ namespace AiLogger.Providers;
 /// Local AI provider using an Ollama server (default http://localhost:11434).
 /// Leverages the /api/chat endpoint with JSON formatting to perform analysis and sanitization.
 /// </summary>
-public sealed class OllamaProvider : AIProviderBase
-{
-    private static readonly HttpClient _http = new();
-    private readonly string _endpoint;
-    private readonly string _model;
-
-    public OllamaProvider(ILogger<OllamaProvider> logger) : base(logger)
+    public sealed class OllamaProvider : AIProviderBase
     {
-        _endpoint = Environment.GetEnvironmentVariable("OLLAMA_ENDPOINT")?.TrimEnd('/') ?? "http://localhost:11434";
-        _model = Environment.GetEnvironmentVariable("OLLAMA_MODEL") ?? "llama3"; // choose a commonly available local model
-    }
+        private static readonly HttpClient _http = new();
+        private readonly string? _endpoint;
+        private readonly string? _model;
+
+        public OllamaProvider(ILogger<OllamaProvider> logger, IConfiguration configuration) : base(logger)
+        {
+            var section = configuration.GetSection("AiProviders:Ollama");
+            var configuredEndpoint = section.GetValue<string>("Endpoint") ?? Environment.GetEnvironmentVariable("OLLAMA_ENDPOINT");
+            var configuredModel = section.GetValue<string>("Model") ?? Environment.GetEnvironmentVariable("OLLAMA_MODEL");
+
+            _endpoint = string.IsNullOrWhiteSpace(configuredEndpoint)
+                ? "http://localhost:11434"
+                : configuredEndpoint.TrimEnd('/');
+
+            _model = string.IsNullOrWhiteSpace(configuredModel)
+                ? "llama3"
+                : configuredModel;
+        }
 
     public override string ProviderName => "Ollama";
-    public override bool IsConfigured => !string.IsNullOrWhiteSpace(_endpoint) && !string.IsNullOrWhiteSpace(_model);
+        public override bool IsConfigured => !string.IsNullOrWhiteSpace(_endpoint) && !string.IsNullOrWhiteSpace(_model);
 
     public override async Task<string> AnalyzeTextAsync(string text, SensitiveDataOptions options, CancellationToken cancellationToken = default)
     {

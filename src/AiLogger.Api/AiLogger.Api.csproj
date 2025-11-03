@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AiLogger.Core\AiLogger.Core.csproj" />
+    <ProjectReference Include="..\AiLogger.Providers\AiLogger.Providers.csproj" />
   </ItemGroup>
 
 </Project>

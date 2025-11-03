@@ -197,10 +197,20 @@ export class AppComponent {
   }
 
   private deriveSanitizedFileName(): string {
-    const original = this.analysisResult?.metadata.originalFileName?.trim() || 'log.txt';
+    const metadata = this.analysisResult?.metadata;
+    const preferred = metadata?.sanitizedFileName?.trim();
+    if (preferred) {
+      return preferred;
+    }
+
+    const original = metadata?.originalFileName?.trim() || 'log.txt';
     const lastDot = original.lastIndexOf('.');
     const base = lastDot > 0 ? original.slice(0, lastDot) : original;
     const extension = lastDot > 0 ? original.slice(lastDot) : '.txt';
-    return `${base}.sanitized${extension}`;
+    const iso = metadata?.processedAt ? new Date(metadata.processedAt).toISOString() : null;
+    const timestampSuffix = iso ? iso.replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z') : null;
+    return timestampSuffix
+      ? `${base}.sanitized.${timestampSuffix}${extension}`
+      : `${base}.sanitized${extension}`;
   }
 }

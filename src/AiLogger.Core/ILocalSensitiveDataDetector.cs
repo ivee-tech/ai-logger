@@ -83,7 +83,7 @@ public sealed class RegexLocalSensitiveDataDetector : ILocalSensitiveDataDetecto
         }
         if (options.DetectIpAddresses)
         {
-            Collect(Ipv4Regex, "IpAddress", () => ipCounter++, i => $"10.0.0.{i}");
+            Collect(Ipv4Regex, "IpAddress", () => ipCounter++, i => $"IP_ADDRESS_{i:D3}");
         }
         if (options.DetectHostnames)
         {
@@ -257,35 +257,7 @@ public sealed class RegexLocalSensitiveDataDetector : ILocalSensitiveDataDetecto
         return false;
     }
 
-    private static string CreateMockSshPublicKey(int index)
-    {
-        var bytes = new byte[32];
-        for (int i = 0; i < bytes.Length; i++)
-        {
-            bytes[i] = (byte)((index * 37 + i * 17) % 255);
-            if (bytes[i] == 0) bytes[i] = 1;
-        }
-        var base64 = Convert.ToBase64String(bytes);
-        return $"ssh-ed25519 {base64} user{index}@example.local";
-    }
+    private static string CreateMockSshPublicKey(int index) => $"SSH_KEY_{index:D3}";
 
-    private static string CreateMockSshFingerprint(int index)
-    {
-        var bytes = new byte[32];
-        for (int i = 0; i < bytes.Length; i++)
-        {
-            bytes[i] = (byte)(((index + 5) * 29 + i * 13) % 253);
-            if (bytes[i] == 0) bytes[i] = 2;
-        }
-        var base64 = Convert.ToBase64String(bytes).TrimEnd('=');
-        if (base64.Length < 43)
-        {
-            base64 = base64.PadRight(43, 'A');
-        }
-        else if (base64.Length > 43)
-        {
-            base64 = base64.Substring(0, 43);
-        }
-        return $"SHA256:{base64}";
-    }
+    private static string CreateMockSshFingerprint(int index) => $"SSH_FINGERPRINT_{index:D3}";
 }

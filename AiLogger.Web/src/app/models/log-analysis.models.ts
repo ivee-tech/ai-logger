@@ -15,6 +15,7 @@ export interface AnalysisMetadata {
   processedAt: string;
   durationMs?: number;
   tokenUsage?: TokenUsage;
+  sanitizedFileName?: string;
 }
 
 export interface SensitiveFinding {
